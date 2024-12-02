@@ -156,11 +156,6 @@ const XLSXConverter = () => {
               </div>
               <h1 className="ml-3 text-xl font-bold text-gray-900">XLSX Converter</h1>
             </div>
-            <nav className="flex space-x-4">
-              <a href="#features" className="text-gray-500 hover:text-gray-900">Features</a>
-              <a href="#how-it-works" className="text-gray-500 hover:text-gray-900">How it works</a>
-              <a href="#contact" className="text-gray-500 hover:text-gray-900">Contact</a>
-            </nav>
           </div>
         </div>
       </header>
@@ -275,113 +270,7 @@ const XLSXConverter = () => {
             )}
           </div>
         </div>
-
-        {/* Features Section */}
-        <section id="features" className="py-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Features</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-xl font-semibold mb-2">Multiple Sheets</h3>
-              <p className="text-gray-600">Convert all sheets at once or select individual sheets for conversion.</p>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-xl font-semibold mb-2">Privacy First</h3>
-              <p className="text-gray-600">All conversion happens in your browser. Your files never leave your device.</p>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-xl font-semibold mb-2">Fast & Free</h3>
-              <p className="text-gray-600">Convert files instantly with no size limits. Always free to use.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* How It Works Section */}
-        <section id="how-it-works" className="py-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">How It Works</h2>
-          <div className="grid md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-blue-600 font-bold">1</span>
-              </div>
-              <h3 className="font-semibold mb-2">Upload File</h3>
-              <p className="text-gray-600">Select your XLSX file</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-blue-600 font-bold">2</span>
-              </div>
-              <h3 className="font-semibold mb-2">Preview</h3>
-              <p className="text-gray-600">Review your data</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-blue-600 font-bold">3</span>
-              </div>
-              <h3 className="font-semibold mb-2">Select Sheets</h3>
-              <p className="text-gray-600">Choose sheets to convert</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-blue-600 font-bold">4</span>
-              </div>
-              <h3 className="font-semibold mb-2">Download</h3>
-              <p className="text-gray-600">Get your CSV files</p>
-            </div>
-          </div>
-        </section>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-gray-50 border-t border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid md:grid-cols-3 gap-8">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Product</h3>
-              <ul className="mt-4 space-y-4">
-                <li>
-                  <a href="#features" className="text-base text-gray-500 hover:text-gray-900">
-                    Features
-                  </a>
-                </li>
-                <li>
-                  <a href="#how-it-works" className="text-base text-gray-500 hover:text-gray-900">
-                    How it works
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Support</h3>
-              <ul className="mt-4 space-y-4">
-                <li>
-                  <a href="#" className="text-base text-gray-500 hover:text-gray-900">
-                    Privacy Policy
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-base text-gray-500 hover:text-gray-900">
-                    Terms of Service
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Contact</h3>
-              <p className="mt-4 text-base text-gray-500">
-                Questions? Reach out at{' '}
-                <a href="mailto:contact@example.com" className="text-blue-600 hover:text-blue-500">
-                  contact@example.com
-                </a>
-              </p>
-            </div>
-          </div>
-          <div className="mt-8 border-t border-gray-200 pt-8">
-            <p className="text-base text-gray-400 text-center">
-              &copy; {new Date().getFullYear()} Company. All rights reserved.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
