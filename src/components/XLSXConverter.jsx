@@ -11,30 +11,63 @@ const XLSXConverter = () => {
 
   const processSheet = (worksheet) => {
     const data = [];
+    let maxCells = 0;
+
+    // First pass: determine the maximum number of columns
     worksheet.eachRow((row) => {
+      maxCells = Math.max(maxCells, row.cellCount);
+    });
+
+    // Second pass: process the data with proper formatting
+    worksheet.eachRow((row, rowNumber) => {
       const rowData = [];
-      row.eachCell((cell) => {
+      
+      // Process each cell up to maxCells
+      for (let i = 1; i <= maxCells; i++) {
+        const cell = row.getCell(i);
         let value = '';
+
         try {
           if (cell.value === null || cell.value === undefined) {
             value = '';
           } else if (cell.value instanceof Date) {
-            value = cell.value.toISOString();
+            // Format date as YYYY-MM-DD
+            const date = cell.value;
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            value = `${year}-${month}-${day}`;
           } else if (cell.type === ExcelJS.ValueType.RichText) {
-            value = cell.text || '';
+            value = (cell.text || '').trim();
           } else if (cell.type === ExcelJS.ValueType.Formula) {
-            value = cell.result?.toString() || '';
+            // Handle date results from formulas
+            if (cell.result instanceof Date) {
+              const date = cell.result;
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              value = `${year}-${month}-${day}`;
+            } else {
+              value = (cell.result?.toString() || '').trim();
+            }
           } else {
-            value = cell.value.toString();
+            value = cell.value.toString().trim();
           }
         } catch (cellError) {
           console.warn('Error reading cell:', cellError);
           value = '';
         }
         rowData.push(value);
-      });
+      }
+
+      // Ensure all rows have the same number of columns
+      while (rowData.length < maxCells) {
+        rowData.push('');
+      }
+
       data.push(rowData);
     });
+
     return data;
   };
 
@@ -55,7 +88,12 @@ const XLSXConverter = () => {
       
       const sheets = workbook.worksheets.map(worksheet => {
         const data = processSheet(worksheet);
-        const csv = Papa.unparse(data);
+        const csv = Papa.unparse(data, {
+          quotes: false, // Disable quotes around fields
+          delimiter: ',', // Use comma as delimiter
+          quoteChar: '"', // Define quote character (will only be used when necessary)
+          escapeChar: '"', // Define escape character for fields that actually contain commas or quotes
+        });
         return {
           name: worksheet.name,
           data: data,
