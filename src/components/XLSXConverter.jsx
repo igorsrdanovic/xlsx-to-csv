@@ -50,8 +50,26 @@ const XLSXConverter = () => {
             } else {
               value = (cell.result?.toString() || '').trim();
             }
+          } else if (cell.type === ExcelJS.ValueType.Hyperlink) {
+            // Handle hyperlinked emails - extract just the email text
+            if (typeof cell.value === 'object' && cell.value.text) {
+              value = cell.value.text.trim();
+            } else if (typeof cell.value === 'object' && cell.value.target) {
+              // If it's a mailto: link, extract just the email
+              const target = cell.value.target;
+              value = target.startsWith('mailto:') ? target.substring(7).trim() : target.trim();
+            } else {
+              value = cell.text?.trim() || '';
+            }
           } else {
-            value = cell.value.toString().trim();
+            // Handle plain text that might be an email
+            const stringValue = cell.value.toString().trim();
+            // If the cell has a hyperlink property, prefer the text content
+            if (cell.hyperlink) {
+              value = cell.text?.trim() || stringValue;
+            } else {
+              value = stringValue;
+            }
           }
         } catch (cellError) {
           console.warn('Error reading cell:', cellError);
