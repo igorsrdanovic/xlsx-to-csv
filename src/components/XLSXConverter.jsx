@@ -370,8 +370,8 @@ const XLSXConverter = () => {
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Contact</h3>
               <p className="mt-4 text-base text-gray-500">
                 Questions? Reach out at{' '}
-                <a href="mailto:contact@example.com" className="text-blue-600 hover:text-blue-500">
-                  contact@example.com
+                <a href="mailto:contact@xlsx2csv.com" className="text-blue-600 hover:text-blue-500">
+                  contact@xlsx2csv.com
                 </a>
               </p>
             </div>
