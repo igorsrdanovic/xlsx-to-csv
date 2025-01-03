@@ -1,7 +1,7 @@
 // Analytics.js
 import { useEffect } from 'react';
 
-export const GA_TRACKING_ID = 'G-TJLF9HRG0D'; 
+export const GA_TRACKING_ID = 'G-9WQ5EYZP4G'; 
 
 // Initialize GA script
 export const initGA = () => {

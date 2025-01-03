@@ -1,4 +1,5 @@
 import XLSXConverter from './components/XLSXConverter'
+import Analytics from './utils/Analytics'
 
 function App() {
   return (
