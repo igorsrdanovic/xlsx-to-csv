@@ -155,7 +155,7 @@ const XLSXConverter = () => {
         <meta name="keywords" content="XLSX to CSV, online converter, file conversion" />
       </Helmet>
       <Analytics />
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto">
         <section>
           <div>
             <h1 className="text-gray-600">Get your CSV files</h1>
