@@ -9,11 +9,11 @@ const App = () => {
   return (
     <Router>
       <Analytics />
-      <Switch>
+      <Routes>
         <Route exact path="/" component={XLSXConverter} />
         <Route path="/terms-and-conditions" component={TermsAndConditions} />
         <Route path="/privacy-policy" component={PrivacyPolicy} />
-      </Switch>
+      </Routes>
     </Router>
   );
 };
