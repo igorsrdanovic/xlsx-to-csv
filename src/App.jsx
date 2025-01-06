@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import XLSXConverter from './components/XLSXConverter';
 import TermsAndConditions from './components/TermsAndConditions';
 import PrivacyPolicy from './components/PrivacyPolicy';
@@ -10,9 +10,9 @@ const App = () => {
     <Router>
       <Analytics />
       <Routes>
-        <Route exact path="/" component={XLSXConverter} />
-        <Route path="/terms-and-conditions" component={TermsAndConditions} />
-        <Route path="/privacy-policy" component={PrivacyPolicy} />
+        <Route path="/" element={<XLSXConverter />} />
+        <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       </Routes>
     </Router>
   );
