@@ -1,15 +1,21 @@
-import XLSXConverter from './components/XLSXConverter'
-import Analytics from './utils/Analytics'
+import React from 'react';
+import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import XLSXConverter from './components/XLSXConverter';
+import TermsAndConditions from './components/TermsAndConditions';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import Analytics from './utils/Analytics';
 
-function App() {
+const App = () => {
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        <Analytics />
-        <XLSXConverter />
-      </div>
-    </div>
-  )
-}
+    <Router>
+      <Analytics />
+      <Switch>
+        <Route exact path="/" component={XLSXConverter} />
+        <Route path="/terms-and-conditions" component={TermsAndConditions} />
+        <Route path="/privacy-policy" component={PrivacyPolicy} />
+      </Switch>
+    </Router>
+  );
+};
 
-export default App
+export default App;
