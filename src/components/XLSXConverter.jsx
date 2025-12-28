@@ -4,7 +4,6 @@ import * as ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
-import Analytics from '../utils/Analytics';
 
 const XLSXConverter = () => {
   const [sheetsData, setSheetsData] = useState([]);
@@ -12,6 +11,12 @@ const XLSXConverter = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedSheet, setSelectedSheet] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const [delimiter, setDelimiter] = useState(',');
+
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
   const processSheet = (worksheet) => {
     const data = [];
@@ -93,28 +98,60 @@ const XLSXConverter = () => {
     return data;
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files[0];
+  const processFile = async (file) => {
     if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.xlsx')) {
+      setError('Please select a valid XLSX file');
+      trackEvent('conversion_error', 'File', 'Invalid file type');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      setError(`File is too large (${sizeMB}MB). Maximum file size is 50MB.`);
+      trackEvent('conversion_error', 'File', 'File too large', file.size);
+      return;
+    }
 
     setLoading(true);
     setError('');
+    setProgress(0);
     setFileName(file.name.replace('.xlsx', ''));
     setSheetsData([]);
     setSelectedSheet(0);
 
+    trackEvent('conversion_started', 'File', file.name, file.size);
+
     try {
+      setProgressMessage('Reading file...');
+      setProgress(10);
+
       const workbook = new ExcelJS.Workbook();
       const arrayBuffer = await file.arrayBuffer();
+
+      setProgressMessage('Loading workbook...');
+      setProgress(30);
+
       await workbook.xlsx.load(arrayBuffer);
-      
-      const sheets = workbook.worksheets.map(worksheet => {
+
+      setProgressMessage('Processing sheets...');
+      setProgress(50);
+
+      const totalSheets = workbook.worksheets.length;
+      const sheets = workbook.worksheets.map((worksheet, index) => {
+        const sheetProgress = 50 + ((index + 1) / totalSheets) * 40;
+        setProgress(Math.round(sheetProgress));
+        setProgressMessage(`Processing sheet ${index + 1} of ${totalSheets}...`);
+
         const data = processSheet(worksheet);
         const csv = Papa.unparse(data, {
-          quotes: false, // Disable quotes around fields
-          delimiter: ',', // Use comma as delimiter
-          quoteChar: '"', // Define quote character (will only be used when necessary)
-          escapeChar: '"', // Define escape character for fields that actually contain commas or quotes
+          quotes: false,
+          delimiter: delimiter,
+          quoteChar: '"',
+          escapeChar: '"',
         });
         return {
           name: worksheet.name,
@@ -124,27 +161,80 @@ const XLSXConverter = () => {
         };
       });
 
+      setProgress(100);
+      setProgressMessage('Conversion complete!');
       setSheetsData(sheets);
+
+      trackEvent('conversion_success', 'File', file.name, sheets.length);
     } catch (error) {
       console.error('Detailed error:', error);
-      setError(error.message || 'Error converting file');
+      const errorMsg = error.message || 'Error converting file';
+      setError(errorMsg);
+      trackEvent('conversion_error', 'File', errorMsg);
     } finally {
       setLoading(false);
+      setTimeout(() => {
+        setProgress(0);
+        setProgressMessage('');
+      }, 2000);
     }
   };
 
-  const downloadCSV = (csv, sheetName) => {
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    await processFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  const regenerateCSV = (data) => {
+    return Papa.unparse(data, {
+      quotes: false,
+      delimiter: delimiter,
+      quoteChar: '"',
+      escapeChar: '"',
+    });
+  };
+
+  const downloadCSV = (sheetData, sheetName) => {
+    const csv = regenerateCSV(sheetData.data);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${fileName}_${sheetName}.csv`;
+
+    const delimiterName = delimiter === ',' ? 'csv' : delimiter === '\t' ? 'tsv' : 'csv';
+    link.download = `${fileName}_${sheetName}.${delimiterName}`;
     link.click();
+
+    trackEvent('download_sheet', 'Export', sheetName, sheetData.rowCount);
   };
 
   const downloadAllSheets = () => {
     sheetsData.forEach(sheet => {
-      downloadCSV(sheet.csv, sheet.name);
+      downloadCSV(sheet, sheet.name);
     });
+    trackEvent('download_all', 'Export', 'All sheets', sheetsData.length);
   };
 
   return (
@@ -154,7 +244,6 @@ const XLSXConverter = () => {
         <meta name="description" content="Convert your XLSX files to CSV format easily and quickly with our online converter." />
         <meta name="keywords" content="XLSX to CSV, online converter, file conversion" />
       </Helmet>
-      <Analytics />
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
         {/* Header */}
         <header className="bg-white shadow-sm">
@@ -192,7 +281,16 @@ const XLSXConverter = () => {
           <div className="bg-white rounded-xl shadow-xl p-6 mb-12">
             <div className="space-y-6">
               {/* File Upload Section */}
-              <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors">
+              <div
+                className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg transition-all ${
+                  isDragging
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
                 <input
                   type="file"
                   accept=".xlsx"
@@ -200,9 +298,29 @@ const XLSXConverter = () => {
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 <p className="mt-2 text-sm text-gray-500">
-                  Drag and drop your XLSX file here or click to browse
+                  {isDragging ? 'Drop your file here' : 'Drag and drop your XLSX file here or click to browse'}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Maximum file size: 50MB
                 </p>
               </div>
+
+              {/* Delimiter Selector */}
+              {!loading && sheetsData.length === 0 && (
+                <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                  <label className="font-medium text-gray-700">Delimiter:</label>
+                  <select
+                    value={delimiter}
+                    onChange={(e) => setDelimiter(e.target.value)}
+                    className="border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value=",">Comma (,)</option>
+                    <option value=";">Semicolon (;)</option>
+                    <option value="\t">Tab</option>
+                    <option value="|">Pipe (|)</option>
+                  </select>
+                </div>
+              )}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-4">
@@ -211,15 +329,43 @@ const XLSXConverter = () => {
               )}
 
               {loading && (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600">Converting...</span>
+                <div className="space-y-4 py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-gray-600">{progressMessage || 'Converting...'}</span>
+                  </div>
+                  {progress > 0 && (
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  {progress > 0 && (
+                    <p className="text-center text-sm text-gray-500">{progress}%</p>
+                  )}
                 </div>
               )}
 
               {/* Sheets Section */}
               {sheetsData.length > 0 && (
                 <div className="space-y-6">
+                  {/* Delimiter Selector for Export */}
+                  <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                    <label className="font-medium text-gray-700">Export Delimiter:</label>
+                    <select
+                      value={delimiter}
+                      onChange={(e) => setDelimiter(e.target.value)}
+                      className="border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value=",">Comma (,) - CSV</option>
+                      <option value=";">Semicolon (;)</option>
+                      <option value="\t">Tab - TSV</option>
+                      <option value="|">Pipe (|)</option>
+                    </select>
+                  </div>
+
                   {/* Sheet Controls */}
                   <div className="flex flex-col space-y-4">
                     <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
@@ -237,7 +383,7 @@ const XLSXConverter = () => {
                           ))}
                         </select>
                         <button
-                          onClick={() => downloadCSV(sheetsData[selectedSheet].csv, sheetsData[selectedSheet].name)}
+                          onClick={() => downloadCSV(sheetsData[selectedSheet], sheetsData[selectedSheet].name)}
                           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                         >
                           Download Sheet
