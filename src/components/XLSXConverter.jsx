@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { trackEvent } from '../utils/Analytics';
 import * as ExcelJS from 'exceljs';
 import Papa from 'papaparse';
+import JSZip from 'jszip';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 
@@ -15,6 +16,9 @@ const XLSXConverter = () => {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [delimiter, setDelimiter] = useState(',');
+  const [exportFormat, setExportFormat] = useState('csv');
+  const [batchFiles, setBatchFiles] = useState([]);
+  const [batchMode, setBatchMode] = useState(false);
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -96,6 +100,86 @@ const XLSXConverter = () => {
     });
 
     return data;
+  };
+
+  const generateJSON = (data) => {
+    if (data.length === 0) return '[]';
+
+    const headers = data[0];
+    const rows = data.slice(1);
+
+    const jsonArray = rows.map(row => {
+      const obj = {};
+      headers.forEach((header, index) => {
+        obj[header || `column_${index}`] = row[index] || '';
+      });
+      return obj;
+    });
+
+    return JSON.stringify(jsonArray, null, 2);
+  };
+
+  const generateSQL = (data, tableName = 'data') => {
+    if (data.length === 0) return '';
+
+    const headers = data[0];
+    const rows = data.slice(1);
+
+    const sanitizeIdentifier = (name) => {
+      return name.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+    };
+
+    const sanitizeValue = (value) => {
+      if (value === null || value === undefined || value === '') return 'NULL';
+      return `'${String(value).replace(/'/g, "''")}'`;
+    };
+
+    const columns = headers.map(h => sanitizeIdentifier(h || 'column'));
+
+    let sql = `-- SQL INSERT statements for ${tableName}\n\n`;
+
+    rows.forEach(row => {
+      const values = row.map(sanitizeValue).join(', ');
+      sql += `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${values});\n`;
+    });
+
+    return sql;
+  };
+
+  const generateMarkdown = (data) => {
+    if (data.length === 0) return '';
+
+    let markdown = '';
+
+    data.forEach((row, rowIndex) => {
+      markdown += '| ' + row.join(' | ') + ' |\n';
+
+      if (rowIndex === 0) {
+        markdown += '| ' + row.map(() => '---').join(' | ') + ' |\n';
+      }
+    });
+
+    return markdown;
+  };
+
+  const generateHTML = (data) => {
+    if (data.length === 0) return '';
+
+    let html = '<table border="1" cellpadding="5" cellspacing="0">\n';
+
+    data.forEach((row, rowIndex) => {
+      const tag = rowIndex === 0 ? 'th' : 'td';
+      html += '  <tr>\n';
+      row.forEach(cell => {
+        const escaped = String(cell || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += `    <${tag}>${escaped}</${tag}>\n`;
+      });
+      html += '  </tr>\n';
+    });
+
+    html += '</table>';
+
+    return html;
   };
 
   const processFile = async (file) => {
@@ -208,33 +292,231 @@ const XLSXConverter = () => {
     }
   };
 
-  const regenerateCSV = (data) => {
-    return Papa.unparse(data, {
-      quotes: false,
-      delimiter: delimiter,
-      quoteChar: '"',
-      escapeChar: '"',
-    });
+  const generateExportData = (data, format) => {
+    switch (format) {
+      case 'csv':
+      case 'tsv':
+        return Papa.unparse(data, {
+          quotes: false,
+          delimiter: delimiter,
+          quoteChar: '"',
+          escapeChar: '"',
+        });
+      case 'json':
+        return generateJSON(data);
+      case 'sql':
+        return generateSQL(data, fileName || 'data');
+      case 'markdown':
+        return generateMarkdown(data);
+      case 'html':
+        return generateHTML(data);
+      default:
+        return Papa.unparse(data, {
+          quotes: false,
+          delimiter: delimiter,
+          quoteChar: '"',
+          escapeChar: '"',
+        });
+    }
   };
 
-  const downloadCSV = (sheetData, sheetName) => {
-    const csv = regenerateCSV(sheetData.data);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const getFileExtension = (format) => {
+    switch (format) {
+      case 'csv':
+        return delimiter === ',' ? 'csv' : delimiter === '\t' ? 'tsv' : 'csv';
+      case 'tsv':
+        return 'tsv';
+      case 'json':
+        return 'json';
+      case 'sql':
+        return 'sql';
+      case 'markdown':
+        return 'md';
+      case 'html':
+        return 'html';
+      default:
+        return 'csv';
+    }
+  };
+
+  const getMimeType = (format) => {
+    switch (format) {
+      case 'csv':
+      case 'tsv':
+        return 'text/csv;charset=utf-8;';
+      case 'json':
+        return 'application/json;charset=utf-8;';
+      case 'sql':
+        return 'text/plain;charset=utf-8;';
+      case 'markdown':
+        return 'text/markdown;charset=utf-8;';
+      case 'html':
+        return 'text/html;charset=utf-8;';
+      default:
+        return 'text/plain;charset=utf-8;';
+    }
+  };
+
+  const downloadFile = (sheetData, sheetName, format = exportFormat) => {
+    const exportData = generateExportData(sheetData.data, format);
+    const blob = new Blob([exportData], { type: getMimeType(format) });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
 
-    const delimiterName = delimiter === ',' ? 'csv' : delimiter === '\t' ? 'tsv' : 'csv';
-    link.download = `${fileName}_${sheetName}.${delimiterName}`;
+    const extension = getFileExtension(format);
+    link.download = `${fileName}_${sheetName}.${extension}`;
     link.click();
 
-    trackEvent('download_sheet', 'Export', sheetName, sheetData.rowCount);
+    trackEvent('download_sheet', 'Export', `${sheetName} (${format})`, sheetData.rowCount);
   };
 
   const downloadAllSheets = () => {
     sheetsData.forEach(sheet => {
-      downloadCSV(sheet, sheet.name);
+      downloadFile(sheet, sheet.name, exportFormat);
     });
-    trackEvent('download_all', 'Export', 'All sheets', sheetsData.length);
+    trackEvent('download_all', 'Export', `All sheets (${exportFormat})`, sheetsData.length);
+  };
+
+  const downloadAllSheetsAsZip = async () => {
+    const zip = new JSZip();
+
+    sheetsData.forEach(sheet => {
+      const exportData = generateExportData(sheet.data, exportFormat);
+      const extension = getFileExtension(exportFormat);
+      zip.file(`${fileName}_${sheet.name}.${extension}`, exportData);
+    });
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${fileName}_all_sheets.zip`;
+    link.click();
+
+    trackEvent('download_zip', 'Export', `All sheets ZIP (${exportFormat})`, sheetsData.length);
+  };
+
+  const handleMultiFileChange = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    setBatchMode(true);
+    setBatchFiles(files.map((file, index) => ({
+      id: index,
+      file: file,
+      name: file.name,
+      status: 'pending', // pending, processing, completed, error
+      progress: 0,
+      sheets: [],
+      error: null
+    })));
+
+    trackEvent('batch_upload', 'Batch', 'Files uploaded', files.length);
+  };
+
+  const processBatchFiles = async () => {
+    for (let i = 0; i < batchFiles.length; i++) {
+      const fileEntry = batchFiles[i];
+
+      if (fileEntry.status !== 'pending') continue;
+
+      // Update status to processing
+      setBatchFiles(prev => prev.map(f =>
+        f.id === fileEntry.id ? { ...f, status: 'processing', progress: 0 } : f
+      ));
+
+      try {
+        // Validate file
+        if (!fileEntry.file.name.endsWith('.xlsx')) {
+          setBatchFiles(prev => prev.map(f =>
+            f.id === fileEntry.id ? { ...f, status: 'error', error: 'Invalid file type' } : f
+          ));
+          continue;
+        }
+
+        if (fileEntry.file.size > MAX_FILE_SIZE) {
+          const sizeMB = (fileEntry.file.size / (1024 * 1024)).toFixed(2);
+          setBatchFiles(prev => prev.map(f =>
+            f.id === fileEntry.id ? { ...f, status: 'error', error: `File too large (${sizeMB}MB)` } : f
+          ));
+          continue;
+        }
+
+        // Process file
+        setBatchFiles(prev => prev.map(f =>
+          f.id === fileEntry.id ? { ...f, progress: 10 } : f
+        ));
+
+        const workbook = new ExcelJS.Workbook();
+        const arrayBuffer = await fileEntry.file.arrayBuffer();
+
+        setBatchFiles(prev => prev.map(f =>
+          f.id === fileEntry.id ? { ...f, progress: 30 } : f
+        ));
+
+        await workbook.xlsx.load(arrayBuffer);
+
+        setBatchFiles(prev => prev.map(f =>
+          f.id === fileEntry.id ? { ...f, progress: 50 } : f
+        ));
+
+        const sheets = workbook.worksheets.map((worksheet) => {
+          const data = processSheet(worksheet);
+          return {
+            name: worksheet.name,
+            data: data,
+            rowCount: data.length
+          };
+        });
+
+        setBatchFiles(prev => prev.map(f =>
+          f.id === fileEntry.id ? {
+            ...f,
+            status: 'completed',
+            progress: 100,
+            sheets: sheets
+          } : f
+        ));
+
+      } catch (error) {
+        setBatchFiles(prev => prev.map(f =>
+          f.id === fileEntry.id ? {
+            ...f,
+            status: 'error',
+            error: error.message || 'Processing error'
+          } : f
+        ));
+      }
+    }
+
+    trackEvent('batch_process_complete', 'Batch', 'All files processed');
+  };
+
+  const downloadBatchAsZip = async () => {
+    const zip = new JSZip();
+
+    batchFiles.forEach(fileEntry => {
+      if (fileEntry.status === 'completed' && fileEntry.sheets.length > 0) {
+        const baseName = fileEntry.name.replace('.xlsx', '');
+        fileEntry.sheets.forEach(sheet => {
+          const exportData = generateExportData(sheet.data, exportFormat);
+          const extension = getFileExtension(exportFormat);
+          zip.file(`${baseName}_${sheet.name}.${extension}`, exportData);
+        });
+      }
+    });
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `batch_export_${Date.now()}.zip`;
+    link.click();
+
+    trackEvent('batch_download_zip', 'Batch', `Batch ZIP (${exportFormat})`);
+  };
+
+  const clearBatch = () => {
+    setBatchFiles([]);
+    setBatchMode(false);
   };
 
   return (
@@ -280,6 +562,32 @@ const XLSXConverter = () => {
           {/* Main Converter Card */}
           <div className="bg-white rounded-xl shadow-xl p-6 mb-12">
             <div className="space-y-6">
+              {/* Mode Toggle */}
+              {!loading && sheetsData.length === 0 && batchFiles.length === 0 && (
+                <div className="flex items-center justify-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                  <button
+                    onClick={() => setBatchMode(false)}
+                    className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                      !batchMode
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Single File
+                  </button>
+                  <button
+                    onClick={() => setBatchMode(true)}
+                    className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                      batchMode
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Batch Processing
+                  </button>
+                </div>
+              )}
+
               {/* File Upload Section */}
               <div
                 className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg transition-all ${
@@ -294,31 +602,54 @@ const XLSXConverter = () => {
                 <input
                   type="file"
                   accept=".xlsx"
-                  onChange={handleFileChange}
+                  multiple={batchMode}
+                  onChange={batchMode ? handleMultiFileChange : handleFileChange}
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 <p className="mt-2 text-sm text-gray-500">
-                  {isDragging ? 'Drop your file here' : 'Drag and drop your XLSX file here or click to browse'}
+                  {isDragging
+                    ? 'Drop your file here'
+                    : batchMode
+                    ? 'Select multiple XLSX files for batch processing'
+                    : 'Drag and drop your XLSX file here or click to browse'}
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  Maximum file size: 50MB
+                  Maximum file size: 50MB per file
                 </p>
               </div>
 
-              {/* Delimiter Selector */}
-              {!loading && sheetsData.length === 0 && (
-                <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
-                  <label className="font-medium text-gray-700">Delimiter:</label>
-                  <select
-                    value={delimiter}
-                    onChange={(e) => setDelimiter(e.target.value)}
-                    className="border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value=",">Comma (,)</option>
-                    <option value=";">Semicolon (;)</option>
-                    <option value="\t">Tab</option>
-                    <option value="|">Pipe (|)</option>
-                  </select>
+              {/* Export Format & Delimiter Selectors */}
+              {!loading && sheetsData.length === 0 && batchFiles.length === 0 && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                    <label className="font-medium text-gray-700 whitespace-nowrap">Export Format:</label>
+                    <select
+                      value={exportFormat}
+                      onChange={(e) => setExportFormat(e.target.value)}
+                      className="flex-1 border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="csv">CSV</option>
+                      <option value="json">JSON</option>
+                      <option value="sql">SQL</option>
+                      <option value="markdown">Markdown</option>
+                      <option value="html">HTML</option>
+                    </select>
+                  </div>
+                  {(exportFormat === 'csv' || exportFormat === 'tsv') && (
+                    <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                      <label className="font-medium text-gray-700">Delimiter:</label>
+                      <select
+                        value={delimiter}
+                        onChange={(e) => setDelimiter(e.target.value)}
+                        className="flex-1 border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value=",">Comma (,)</option>
+                        <option value=";">Semicolon (;)</option>
+                        <option value="\t">Tab</option>
+                        <option value="|">Pipe (|)</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -348,22 +679,112 @@ const XLSXConverter = () => {
                 </div>
               )}
 
+              {/* Batch Processing Queue */}
+              {batchFiles.length > 0 && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Batch Processing ({batchFiles.filter(f => f.status === 'completed').length}/{batchFiles.length} completed)
+                    </h3>
+                    <div className="flex space-x-2">
+                      {batchFiles.some(f => f.status === 'pending') && (
+                        <button
+                          onClick={processBatchFiles}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          Process All
+                        </button>
+                      )}
+                      {batchFiles.some(f => f.status === 'completed') && (
+                        <button
+                          onClick={downloadBatchAsZip}
+                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                        >
+                          Download ZIP
+                        </button>
+                      )}
+                      <button
+                        onClick={clearBatch}
+                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {batchFiles.map((fileEntry) => (
+                      <div
+                        key={fileEntry.id}
+                        className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-gray-900">{fileEntry.name}</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            fileEntry.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            fileEntry.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                            fileEntry.status === 'error' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {fileEntry.status}
+                          </span>
+                        </div>
+                        {fileEntry.status === 'processing' && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${fileEntry.progress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                        {fileEntry.status === 'completed' && (
+                          <p className="text-sm text-gray-600">
+                            {fileEntry.sheets.length} sheet(s), {fileEntry.sheets.reduce((sum, s) => sum + s.rowCount, 0)} total rows
+                          </p>
+                        )}
+                        {fileEntry.status === 'error' && (
+                          <p className="text-sm text-red-600">{fileEntry.error}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Sheets Section */}
               {sheetsData.length > 0 && (
                 <div className="space-y-6">
-                  {/* Delimiter Selector for Export */}
-                  <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
-                    <label className="font-medium text-gray-700">Export Delimiter:</label>
-                    <select
-                      value={delimiter}
-                      onChange={(e) => setDelimiter(e.target.value)}
-                      className="border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value=",">Comma (,) - CSV</option>
-                      <option value=";">Semicolon (;)</option>
-                      <option value="\t">Tab - TSV</option>
-                      <option value="|">Pipe (|)</option>
-                    </select>
+                  {/* Export Format & Delimiter Selector */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                      <label className="font-medium text-gray-700 whitespace-nowrap">Export Format:</label>
+                      <select
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value)}
+                        className="flex-1 border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="csv">CSV</option>
+                        <option value="json">JSON</option>
+                        <option value="sql">SQL</option>
+                        <option value="markdown">Markdown</option>
+                        <option value="html">HTML</option>
+                      </select>
+                    </div>
+                    {(exportFormat === 'csv' || exportFormat === 'tsv') && (
+                      <div className="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+                        <label className="font-medium text-gray-700">Delimiter:</label>
+                        <select
+                          value={delimiter}
+                          onChange={(e) => setDelimiter(e.target.value)}
+                          className="flex-1 border rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value=",">Comma (,)</option>
+                          <option value=";">Semicolon (;)</option>
+                          <option value="\t">Tab</option>
+                          <option value="|">Pipe (|)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sheet Controls */}
@@ -383,7 +804,7 @@ const XLSXConverter = () => {
                           ))}
                         </select>
                         <button
-                          onClick={() => downloadCSV(sheetsData[selectedSheet], sheetsData[selectedSheet].name)}
+                          onClick={() => downloadFile(sheetsData[selectedSheet], sheetsData[selectedSheet].name)}
                           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                         >
                           Download Sheet
@@ -391,12 +812,20 @@ const XLSXConverter = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={downloadAllSheets}
-                      className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                    >
-                      Download All Sheets
-                    </button>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <button
+                        onClick={downloadAllSheets}
+                        className="px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      >
+                        Download All (Separate Files)
+                      </button>
+                      <button
+                        onClick={downloadAllSheetsAsZip}
+                        className="px-4 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                      >
+                        Download All as ZIP
+                      </button>
+                    </div>
                   </div>
 
                   {/* Preview Section */}
